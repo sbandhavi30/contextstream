@@ -1,0 +1,248 @@
+[
+  {
+    "id": "kubectl_001",
+    "tool": "kubectl",
+    "description": "OOMKilled pod with clear memory metric in describe output",
+    "raw_output": "Name:         web-backend-7d9f8b-xk2p9\nNamespace:    production\nNode:         node-3/10.0.1.15\nStatus:       Failed\nIP:           172.16.0.45\nControlled By: ReplicaSet/web-backend-7d9f8b\nContainers:\n  web-backend:\n    Container ID: containerd://a3f9...\n    Image:        acme/web-backend:v2.3.1\n    Limits:\n      memory: 512Mi\n    Requests:\n      memory: 128Mi\n    Last State:\n      Terminated:\n        Reason:    OOMKilled\n        Exit Code: 137\n        Started:   Mon, 21 Jul 2026 03:47:12 +0000\n        Finished:  Mon, 21 Jul 2026 03:52:41 +0000\n    Ready:         False\n    Restart Count: 7\nConditions:\n  Type     Status\n  Ready    False\nEvents:\n  Warning  OOMKilling  5m  kubelet  Memory cgroup out of memory: Kill process 4821 (node) score 1982",
+    "expected": {
+      "resource_type": "pod",
+      "resource_name": "web-backend-7d9f8b-xk2p9",
+      "namespace": "production",
+      "condition": "OOMKilled",
+      "metric": "memory=512Mi limit, restarts=7",
+      "cause": "Container exceeded 512Mi memory limit during operation",
+      "event_timestamp": "2026-07-21T03:47:12Z",
+      "root_cause": "Pod web-backend-7d9f8b-xk2p9 OOMKilled after 7 restarts — memory limit 512Mi exceeded, likely heap growth",
+      "entity_targets": ["web-backend-7d9f8b-xk2p9", "production"],
+      "metric_impact": "memory=512Mi limit breached, exit_code=137",
+      "confidence_min": 0.90
+    }
+  },
+  {
+    "id": "kubectl_002",
+    "tool": "kubectl",
+    "description": "CrashLoopBackOff with no clear cause — confidence should be lower",
+    "raw_output": "Name: api-worker-abc123\nStatus: CrashLoopBackOff\nRestart Count: 23\nLast Exit Code: 1\nLogs: (none available)",
+    "expected": {
+      "resource_type": "pod",
+      "resource_name": "api-worker-abc123",
+      "condition": "CrashLoopBackOff",
+      "metric": "restarts=23",
+      "cause": null,
+      "root_cause": "Pod api-worker-abc123 in CrashLoopBackOff with 23 restarts — exit code 1, no logs available to determine cause",
+      "entity_targets": ["api-worker-abc123"],
+      "confidence_max": 0.75
+    }
+  },
+  {
+    "id": "kubectl_003",
+    "tool": "kubectl",
+    "description": "Healthy running pod — no anomaly, confidence high",
+    "raw_output": "Name: cache-7f9d-k2p1\nNamespace: default\nStatus: Running\nReady: True\nRestart Count: 0\nMemory Usage: 210Mi / 512Mi\nCPU Usage: 0.3 / 1.0",
+    "expected": {
+      "condition": "Running",
+      "metric": "memory=210Mi/512Mi, cpu=0.3/1.0",
+      "cause": null,
+      "root_cause": "Pod cache-7f9d-k2p1 running healthy — memory 210Mi of 512Mi limit, CPU 0.3 of 1.0",
+      "confidence_min": 0.88
+    }
+  },
+  {
+    "id": "sql_001",
+    "tool": "sql",
+    "description": "Failed query with SQL error code",
+    "raw_output": "ERROR 1146 (42S02): Table 'payments_db.invoices_archive' doesn't exist\nQuery: SELECT * FROM invoices_archive WHERE created_at > '2026-01-01'\nExecution time: 2ms",
+    "expected": {
+      "query_type": "SELECT",
+      "tables_affected": ["invoices_archive"],
+      "rows_affected": null,
+      "error_code": "ERROR 1146",
+      "error_message": "Table 'payments_db.invoices_archive' doesn't exist",
+      "execution_ms": 2,
+      "root_cause": "SELECT on invoices_archive failed — table does not exist in payments_db",
+      "entity_targets": ["invoices_archive", "payments_db"],
+      "confidence_min": 0.92
+    }
+  },
+  {
+    "id": "sql_002",
+    "tool": "sql",
+    "description": "Successful UPDATE with row count",
+    "raw_output": "UPDATE users SET status = 'suspended' WHERE last_login < '2025-01-01' AND status = 'active';\nQuery OK, 1842 rows affected (3.21 sec)\nRows matched: 1842  Changed: 1842  Warnings: 0",
+    "expected": {
+      "query_type": "UPDATE",
+      "tables_affected": ["users"],
+      "rows_affected": 1842,
+      "result_summary": "Suspended 1842 users inactive since before 2025-01-01",
+      "error_code": null,
+      "execution_ms": 3210,
+      "root_cause": "Bulk UPDATE suspended 1842 active users with last_login before 2025-01-01",
+      "entity_targets": ["users"],
+      "metric_impact": "1842 rows affected",
+      "confidence_min": 0.93
+    }
+  },
+  {
+    "id": "sql_003",
+    "tool": "sql",
+    "description": "EXPLAIN output — no error, no row change, needs inference",
+    "raw_output": "EXPLAIN SELECT * FROM orders JOIN customers ON orders.customer_id = customers.id WHERE orders.status = 'pending';\nid | select_type | table     | type | key     | rows   | Extra\n1  | SIMPLE      | orders    | ALL  | NULL    | 842000 | Using where\n1  | SIMPLE      | customers | ref  | PRIMARY | 1      | NULL",
+    "expected": {
+      "query_type": "EXPLAIN",
+      "tables_affected": ["orders", "customers"],
+      "rows_affected": null,
+      "result_summary": "Full table scan on orders (842k rows, no index) joined with customers on primary key",
+      "root_cause": "EXPLAIN reveals full table scan on orders table — 842k rows scanned with no index on status column",
+      "entity_targets": ["orders", "customers"],
+      "metric_impact": "842000 rows scanned, no index used on orders.status",
+      "confidence_min": 0.85
+    }
+  },
+  {
+    "id": "rest_001",
+    "tool": "rest_api",
+    "description": "404 user lookup failure",
+    "raw_output": "GET /api/v2/users/usr_4821\nHTTP/1.1 404 Not Found\nContent-Type: application/json\nX-Request-Id: req_9f2a3b\nX-Response-Time: 12ms\n\n{\"error\": \"USER_NOT_FOUND\", \"message\": \"No user with id usr_4821 exists\", \"code\": 404}",
+    "expected": {
+      "method": "GET",
+      "endpoint": "/api/v2/users/usr_4821",
+      "status_code": 404,
+      "entity": "user",
+      "entity_id": "usr_4821",
+      "state_change": null,
+      "error_message": "No user with id usr_4821 exists",
+      "latency_ms": 12,
+      "root_cause": "GET /api/v2/users/usr_4821 returned 404 — user usr_4821 does not exist",
+      "entity_targets": ["usr_4821"],
+      "confidence_min": 0.95
+    }
+  },
+  {
+    "id": "rest_002",
+    "tool": "rest_api",
+    "description": "Successful PATCH with state change",
+    "raw_output": "PATCH /api/v1/subscriptions/sub_772\nHTTP/1.1 200 OK\nX-Response-Time: 87ms\n\n{\"id\": \"sub_772\", \"status\": \"cancelled\", \"previous_status\": \"active\", \"cancelled_at\": \"2026-07-22T09:14:33Z\", \"refund_amount\": 42.50}",
+    "expected": {
+      "method": "PATCH",
+      "endpoint": "/api/v1/subscriptions/sub_772",
+      "status_code": 200,
+      "entity": "subscription",
+      "entity_id": "sub_772",
+      "state_change": "status: active→cancelled",
+      "latency_ms": 87,
+      "root_cause": "Subscription sub_772 cancelled — status changed active→cancelled, refund $42.50 issued",
+      "entity_targets": ["sub_772"],
+      "metric_impact": "refund_amount=42.50",
+      "confidence_min": 0.95
+    }
+  },
+  {
+    "id": "rest_003",
+    "tool": "rest_api",
+    "description": "500 error with vague message — confidence should be moderate",
+    "raw_output": "POST /api/v3/payments\nHTTP/1.1 500 Internal Server Error\nX-Response-Time: 3042ms\n\n{\"error\": \"INTERNAL_ERROR\", \"message\": \"An unexpected error occurred\", \"trace_id\": \"tr_8b2f\"}",
+    "expected": {
+      "method": "POST",
+      "endpoint": "/api/v3/payments",
+      "status_code": 500,
+      "entity": "payment",
+      "error_message": "An unexpected error occurred",
+      "latency_ms": 3042,
+      "root_cause": "POST /api/v3/payments returned 500 after 3042ms — internal error, cause undetermined from response",
+      "entity_targets": ["payments"],
+      "confidence_max": 0.72
+    }
+  },
+  {
+    "id": "bash_001",
+    "tool": "bash",
+    "description": "Permission denied on file operation",
+    "raw_output": "$ chmod 600 /etc/ssl/private/server.key\nchmod: changing permissions of '/etc/ssl/private/server.key': Operation not permitted\n$ echo $?\n1",
+    "expected": {
+      "command": "chmod 600 /etc/ssl/private/server.key",
+      "exit_code": 1,
+      "outcome": "failure",
+      "key_output": "chmod: changing permissions of '/etc/ssl/private/server.key': Operation not permitted",
+      "error_type": "permission denied",
+      "side_effects": [],
+      "root_cause": "chmod failed on /etc/ssl/private/server.key — permission denied, likely requires root",
+      "entity_targets": ["/etc/ssl/private/server.key"],
+      "confidence_min": 0.93
+    }
+  },
+  {
+    "id": "bash_002",
+    "tool": "bash",
+    "description": "Successful pip install with version output",
+    "raw_output": "$ pip install anthropic==0.32.0\nCollecting anthropic==0.32.0\n  Downloading anthropic-0.32.0-py3-none-any.whl (862 kB)\nInstalling collected packages: anthropic\nSuccessfully installed anthropic-0.32.0",
+    "expected": {
+      "command": "pip install anthropic==0.32.0",
+      "exit_code": 0,
+      "outcome": "success",
+      "key_output": "Successfully installed anthropic-0.32.0",
+      "error_type": null,
+      "side_effects": ["anthropic-0.32.0 installed"],
+      "root_cause": "pip installed anthropic 0.32.0 successfully",
+      "entity_targets": ["anthropic"],
+      "confidence_min": 0.95
+    }
+  },
+  {
+    "id": "bash_003",
+    "tool": "bash",
+    "description": "Long output with buried key signal — tests extraction of relevant line",
+    "raw_output": "$ df -h\nFilesystem      Size  Used Avail Use% Mounted on\nudev            7.8G     0  7.8G   0% /dev\ntmpfs           1.6G  2.1M  1.6G   1% /run\n/dev/sda1        50G   47G  980M  98% /\ntmpfs           7.8G  312M  7.5G   4% /dev/shm\ntmpfs           5.0M     0  5.0M   0% /run/lock\n/dev/sdb1       200G   12G  188G   6% /data",
+    "expected": {
+      "command": "df -h",
+      "exit_code": 0,
+      "outcome": "success",
+      "key_output": "/dev/sda1 50G 47G 980M 98% /",
+      "error_type": null,
+      "root_cause": "Root filesystem /dev/sda1 at 98% capacity — only 980M free of 50G",
+      "entity_targets": ["/dev/sda1", "/"],
+      "metric_impact": "disk_usage=98%, free=980M",
+      "confidence_min": 0.88
+    }
+  },
+  {
+    "id": "file_001",
+    "tool": "file",
+    "description": "Kubernetes deployment YAML with misconfigured resource limits",
+    "raw_output": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web-backend\n  namespace: production\nspec:\n  replicas: 3\n  template:\n    spec:\n      containers:\n      - name: web-backend\n        image: acme/web-backend:v2.3.1\n        resources:\n          limits:\n            memory: \"512Mi\"\n            cpu: \"500m\"\n          requests:\n            memory: \"128Mi\"\n            cpu: \"100m\"\n        env:\n        - name: DB_HOST\n          value: postgres.production.svc.cluster.local\n        - name: CACHE_HOST\n          value: redis.production.svc.cluster.local",
+    "expected": {
+      "file_path": "deployment.yaml",
+      "file_type": "manifest",
+      "key_values": {
+        "memory_limit": "512Mi",
+        "memory_request": "128Mi",
+        "cpu_limit": "500m",
+        "replicas": "3",
+        "image": "acme/web-backend:v2.3.1"
+      },
+      "anomalies": ["memory request (128Mi) is 4x less than limit (512Mi) — large burst ratio may cause OOM on traffic spikes"],
+      "references": ["postgres.production.svc.cluster.local", "redis.production.svc.cluster.local"],
+      "root_cause": "Deployment web-backend has memory request 128Mi vs limit 512Mi — 4x ratio is high, likely cause of OOM events",
+      "entity_targets": ["web-backend", "production"],
+      "confidence_min": 0.88
+    }
+  },
+  {
+    "id": "file_002",
+    "tool": "file",
+    "description": "Sparse config file with missing required key",
+    "raw_output": "# app config\nDEBUG=false\nPORT=8080\n# DB_URL not set\nREDIS_URL=redis://localhost:6379\nMAX_WORKERS=4",
+    "expected": {
+      "file_type": "config",
+      "key_values": {
+        "DEBUG": "false",
+        "PORT": "8080",
+        "REDIS_URL": "redis://localhost:6379",
+        "MAX_WORKERS": "4"
+      },
+      "anomalies": ["DB_URL is commented out / missing — app will likely fail on database operations"],
+      "root_cause": "Config file missing DB_URL — commented out, will cause connection failures",
+      "entity_targets": ["DB_URL"],
+      "confidence_min": 0.90
+    }
+  }
+]
