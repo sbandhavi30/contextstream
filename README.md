@@ -4,6 +4,19 @@
 
 ContextStream sits between your agent framework and the LLM inference engine, managing the context window like an OS manages RAM — paging out raw tool outputs, distilling structured lessons, and keeping the active context lean and causally coherent across unlimited tool calls.
 
+**→ [Quickstart](QUICKSTART.md)** — install, run benchmarks, integrate in 5 minutes.
+
+---
+
+## Install
+
+```bash
+git clone https://github.com/sbandhavi30/contextstream.git
+cd contextstream
+pip install anthropic pydantic pyyaml
+cp .env.example .env  # add ANTHROPIC_API_KEY
+```
+
 ---
 
 ## The Problem
@@ -141,7 +154,7 @@ from sdk.langchain.callback import ContextStreamCallbackHandler
 agent.run("diagnose OOM", callbacks=[ContextStreamCallbackHandler(engine=engine)])
 ```
 
-See [`sdk/langchain/README.md`](sdk/langchain/README.md) for full usage guide.
+See [`sdk/langchain/README.md`](sdk/langchain/README.md) and [`sdk/langgraph/README.md`](sdk/langgraph/README.md) for full usage guides.
 
 ---
 
