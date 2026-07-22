@@ -112,11 +112,15 @@ ContextStream is designed to complement vLLM's native agentic cache APIs:
 
 ## Roadmap
 
-**v0.1 — Core Engine (in progress)**
-- [ ] `core/` engine: ledger, budget, page_table, extractor, deduplicator, fork_manager, eviction_store
-- [ ] LangGraph SDK integration
-- [ ] Dry-run mode (show decisions without modifying context)
-- [ ] 5 built-in tool schemas: kubectl, SQL, REST API, bash, file
+**v0.1 — Core Engine (complete)**
+- [x] `core/` engine: ledger, budget, page_table, extractor, deduplicator, fork_manager, eviction_store
+- [x] LangGraph SDK integration (`sdk/langgraph/`)
+- [x] Dry-run mode (show decisions without modifying context)
+- [x] 5 built-in tool schemas: kubectl, SQL, REST API, bash, file
+- [x] Format auto-detection (regex, <1ms, no LLM)
+- [x] YAML schema registry for custom tool schemas
+- [x] Schema contribution tooling (`scripts/new_schema.py`, `scripts/validate_schemas.py`)
+- [x] Extractor eval harness with 14 ground-truth cases (71% pass rate @ Sonnet)
 
 **v0.2 — vLLM Native Integration (Q3 2026, pending RFC #37168 merge)**
 - [ ] `POST /release_kv_cache` on tombstone events
@@ -134,7 +138,7 @@ ContextStream is designed to complement vLLM's native agentic cache APIs:
 
 ## Status
 
-Early-stage research and design. Architecture validated against vLLM RFC feedback. Core engine implementation in progress.
+v0.1 core engine complete. All 7 engine components built and smoke-tested. LangGraph SDK integration done. Extractor eval running at 71% pass rate (Sonnet). Schema registry with YAML contribution system live.
 
 Contributions, feedback, and collaboration welcome — especially from teams working on long-horizon agent workloads or vLLM agentic cache management.
 
