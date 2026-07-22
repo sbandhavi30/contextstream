@@ -47,25 +47,32 @@ Without ContextStream:                With ContextStream:
 
 ---
 
-## Benchmark: SRE Incident Demo
+## Benchmarks
 
-4-tool agent diagnosing a production OOMKill incident (kubectl → SQL → bash → file).
-Measured on `claude-haiku-4-5-20251001`:
+Two end-to-end demos measured on `claude-haiku-4-5-20251001`:
+
+### SRE Incident — OOMKilled pod (kubectl → SQL → bash → file)
 
 | Metric | Baseline | ContextStream |
 |---|---|---|
-| Context chars sent to LLM | 3,804 | **1,554** |
-| Diagnosis prompt tokens | 1,430 | **646** |
-| Token reduction | — | **55% fewer** |
+| Prompt tokens | 1,430 | **646** |
+| Token reduction | — | **55%** |
 | Raw data in main context | yes | **never** |
-| Diagnosis quality | correct | correct + sharper |
 
-Raw tool outputs (3,658 bytes total) paged to eviction store. Main agent received 4 compressed lessons. Both agents reached correct root cause; ContextStream identified the specific 4:1 heap/container ratio mismatch.
+### ETL Pipeline Failure — query bloat (SQL EXPLAIN → table stats → REST → bash)
 
-```
-Run it yourself:
-  cp .env.example .env  # add ANTHROPIC_API_KEY
-  python examples/sre_agent/compare.py
+| Metric | Baseline | ContextStream |
+|---|---|---|
+| Prompt tokens | 2,520 | **692** |
+| Token reduction | — | **72.5%** |
+| Tombstone fired | n/a | **yes** — 2 SQL lessons on same table auto-deduplicated |
+
+In both cases diagnosis quality is equal or better — the compressed lesson retains the operative signal.
+
+```bash
+cp .env.example .env  # add ANTHROPIC_API_KEY
+python examples/sre_agent/compare.py    # OOM incident
+python examples/etl_agent/compare.py   # ETL bloat incident
 ```
 
 ---
