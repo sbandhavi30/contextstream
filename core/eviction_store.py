@@ -43,15 +43,22 @@ class DiskBackend(EvictionBackend):
     def __init__(self, base_dir: Path | str | None = None):
         self._dir = Path(base_dir or os.environ.get(
             "CONTEXTSTREAM_EVICTION_DIR",
-            Path(tempfile.gettempdir()) / "contextstream" / "evictions"
+            Path.home() / ".cache" / "contextstream" / "evictions"
         ))
-        self._dir.mkdir(parents=True, exist_ok=True)
+        self._dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            os.chmod(self._dir, 0o700)
+        except OSError:
+            pass
 
     def _path(self, ref: str) -> Path:
         return self._dir / f"{ref}.raw"
 
     def write(self, ref: str, content: str) -> None:
-        self._path(ref).write_text(content, encoding="utf-8")
+        p = self._path(ref)
+        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
 
     def read(self, ref: str) -> str | None:
         p = self._path(ref)
