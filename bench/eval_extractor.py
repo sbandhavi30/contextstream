@@ -43,27 +43,74 @@ def score_field_coverage(output: dict, expected: dict) -> float:
     return filled / len(expected_fields)
 
 
+def _score_value(out_val, exp_val) -> float:
+    """Score a single field value. Returns 0.0–1.0."""
+    if out_val is None:
+        return 0.0
+    if isinstance(exp_val, int):
+        try:
+            return 1.0 if int(out_val) == exp_val else 0.0
+        except (ValueError, TypeError):
+            return 0.0
+    if isinstance(exp_val, list):
+        exp_set = {str(x).lower() for x in exp_val}
+        out_list = out_val if isinstance(out_val, list) else [out_val]
+        out_set = {str(x).lower() for x in out_list}
+        if exp_set == out_set:
+            return 1.0
+        overlap = exp_set & out_set
+        return len(overlap) / len(exp_set) if exp_set else 0.0
+    if isinstance(exp_val, dict):
+        # Dict fields (e.g. key_values): score key overlap + value match
+        if not isinstance(out_val, dict):
+            return 0.0
+        if not exp_val:
+            return 1.0
+        key_scores = []
+        for ek, ev in exp_val.items():
+            # Accept case-insensitive key match
+            ov = out_val.get(ek) or out_val.get(ek.lower()) or out_val.get(ek.upper())
+            if ov is None:
+                key_scores.append(0.0)
+            else:
+                # Value: exact or token-F1
+                key_scores.append(_str_similarity(str(ov), str(ev)))
+        return sum(key_scores) / len(key_scores)
+    # String: exact match = 1.0, else token-F1 for fuzzy credit
+    exp_str = str(exp_val).lower()
+    out_str = str(out_val).lower()
+    if exp_str == out_str:
+        return 1.0
+    return _str_similarity(out_str, exp_str)
+
+
+def _str_similarity(a: str, b: str) -> float:
+    """Token-level F1 between two strings. Gives credit for partial matches."""
+    import re
+    stopwords = {"a", "an", "the", "is", "in", "on", "at", "of", "to", "and", "or"}
+    def tok(s): return [t for t in re.split(r"\W+", s.lower()) if t and t not in stopwords]
+    at, bt = tok(a), tok(b)
+    if not at or not bt:
+        return 0.0
+    from collections import Counter
+    ac, bc = Counter(at), Counter(bt)
+    common = sum(min(ac[t], bc[t]) for t in ac)
+    if not common:
+        return 0.0
+    p = common / len(at)
+    r = common / len(bt)
+    return 2 * p * r / (p + r)
+
+
 def score_field_accuracy(output: dict, expected: dict) -> float:
-    """Fraction of expected non-null fields where output matches expected."""
+    """Per-field accuracy with type-aware scoring (int, list, dict, fuzzy string)."""
     expected_fields = {k: v for k, v in expected.items()
                        if not k.startswith("confidence") and v is not None
                        and k not in ("root_cause", "entity_targets", "metric_impact")}
     if not expected_fields:
         return 1.0
-    correct = 0
-    for k, exp_val in expected_fields.items():
-        out_val = output.get(k)
-        if out_val is None:
-            continue
-        if isinstance(exp_val, int):
-            correct += 1 if int(out_val) == exp_val else 0
-        elif isinstance(exp_val, list):
-            exp_set = {str(x).lower() for x in exp_val}
-            out_set = {str(x).lower() for x in (out_val if isinstance(out_val, list) else [out_val])}
-            correct += 1 if exp_set == out_set else (0.5 if exp_set & out_set else 0)
-        else:
-            correct += 1 if str(out_val).lower() == str(exp_val).lower() else 0
-    return correct / len(expected_fields)
+    scores = [_score_value(output.get(k), v) for k, v in expected_fields.items()]
+    return sum(scores) / len(scores)
 
 
 def score_confidence_bound(output_conf: float, expected: dict) -> bool:
