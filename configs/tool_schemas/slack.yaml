@@ -1,10 +1,12 @@
-description: "Slack API tool output — messages, channels, users"
 base: rest_api
-model: claude-sonnet-4-6
+description: Slack API tool output — messages, channels, users
 fields:
-  action: "string — 'send_message' | 'read_channel' | 'search' | 'get_user' | 'create_channel'"
-  channel: "string | null — channel name or ID e.g. '#incidents' 'C0123ABC'"
-  user: "string | null — Slack username or user ID"
-  message_count: "integer | null — number of messages returned or sent"
-  key_content: "string | null — most relevant message text or search result (truncate at 200 chars)"
-  error: "string | null — API error if present"
+  action: string — 'send_message' | 'read_channel' | 'search' | 'get_user' | 'create_channel'
+  channel: string | null — channel name or ID e.g. '#incidents' 'C0123ABC'
+  confidence: float 0.0-1.0
+  error: string | null — API error if present
+  key_content: string | null — most relevant message text or search result (truncate
+    at 200 chars)
+  message_count: integer | null — number of messages returned or sent
+  user: string | null — Slack username or user ID
+model: claude-sonnet-4-6

@@ -1,12 +1,13 @@
-description: "GitHub API tool output — PRs, issues, commits, checks"
 base: rest_api
-model: claude-sonnet-4-6
+description: GitHub API tool output — PRs, issues, commits, checks
 fields:
-  resource_type: "string — 'pull_request' | 'issue' | 'commit' | 'check_run' | 'workflow_run'"
-  resource_id: "string — PR number, issue number, commit SHA, or run ID"
-  repo: "string — owner/repo format e.g. 'org/service-name'"
-  status: "string | null — 'open' | 'closed' | 'merged' | 'success' | 'failure' | 'pending'"
-  title: "string | null — PR or issue title"
-  author: "string | null — GitHub username"
-  state_change: "string | null — what changed e.g. 'open→merged' 'pending→failure'"
-  error: "string | null — API or check error message if present"
+  author: string | null — GitHub username
+  confidence: float 0.0-1.0
+  error: string | null — API or check error message if present
+  repo: string — owner/repo format e.g. 'org/service-name'
+  resource_id: string — PR number, issue number, commit SHA, or run ID
+  resource_type: string — 'pull_request' | 'issue' | 'commit' | 'check_run' | 'workflow_run'
+  state_change: string | null — what changed e.g. 'open→merged' 'pending→failure'
+  status: string | null — 'open' | 'closed' | 'merged' | 'success' | 'failure' | 'pending'
+  title: string | null — PR or issue title
+model: claude-sonnet-4-6

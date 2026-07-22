@@ -1,12 +1,13 @@
-description: "Jira REST API tool output — issue reads, transitions, comments"
 base: rest_api
-model: claude-sonnet-4-6
+description: Jira REST API tool output — issue reads, transitions, comments
 fields:
-  issue_key: "string — Jira issue key e.g. 'PROJ-123'"
-  summary: "string — issue title / summary"
-  status: "string — 'To Do' | 'In Progress' | 'Done' | 'Blocked' | 'In Review'"
-  assignee: "string | null — assignee display name"
-  priority: "string | null — 'Highest' | 'High' | 'Medium' | 'Low' | 'Lowest'"
-  issue_type: "string | null — 'Bug' | 'Story' | 'Task' | 'Epic' | 'Subtask'"
-  state_change: "string | null — transition that occurred e.g. 'In Progress→Done'"
-  error: "string | null — API error message if present"
+  assignee: string | null — assignee display name
+  confidence: float 0.0-1.0
+  error: string | null — API error message if present
+  issue_key: string — Jira issue key e.g. 'PROJ-123'
+  issue_type: string | null — 'Bug' | 'Story' | 'Task' | 'Epic' | 'Subtask'
+  priority: string | null — 'Highest' | 'High' | 'Medium' | 'Low' | 'Lowest'
+  state_change: string | null — transition that occurred e.g. 'In Progress→Done'
+  status: string — 'To Do' | 'In Progress' | 'Done' | 'Blocked' | 'In Review'
+  summary: string — issue title / summary
+model: claude-sonnet-4-6

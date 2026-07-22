@@ -1,12 +1,14 @@
-description: "AWS CLI tool output — any aws service subcommand"
 base: bash
-model: claude-haiku-4-5-20251001
+description: AWS CLI tool output — any aws service subcommand
 fields:
-  service: "string — AWS service name e.g. 's3' 'ec2' 'ecs' 'lambda' 'rds'"
-  operation: "string — API operation e.g. 'describe-instances' 'put-object' 'invoke'"
-  resource_id: "string | null — ARN, instance ID, bucket name, or resource identifier"
-  region: "string | null — AWS region e.g. 'us-east-1'"
-  outcome: "string — 'success' | 'failure' | 'partial'"
-  key_result: "string | null — primary value returned e.g. 'InstanceState=running' 'ObjectSize=4.2MB'"
-  error_code: "string | null — AWS error code e.g. 'NoSuchBucket' 'AccessDenied' 'ThrottlingException'"
-  error_message: "string | null — error message if present"
+  confidence: float 0.0-1.0
+  error_code: string | null — AWS error code e.g. 'NoSuchBucket' 'AccessDenied' 'ThrottlingException'
+  error_message: string | null — error message if present
+  key_result: string | null — primary value returned e.g. 'InstanceState=running'
+    'ObjectSize=4.2MB'
+  operation: string — API operation e.g. 'describe-instances' 'put-object' 'invoke'
+  outcome: string — 'success' | 'failure' | 'partial'
+  region: string | null — AWS region e.g. 'us-east-1'
+  resource_id: string | null — ARN, instance ID, bucket name, or resource identifier
+  service: string — AWS service name e.g. 's3' 'ec2' 'ecs' 'lambda' 'rds'
+model: claude-haiku-4-5-20251001
