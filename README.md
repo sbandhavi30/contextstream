@@ -103,7 +103,7 @@ contextstream/
 │   └── eviction_store.py  # cold storage: local disk / Redis / S3
 ├── sdk/
 │   ├── langgraph/         # before_node / after_node hook integration
-│   ├── langchain/         # VMMMemory drop-in (v2)
+│   ├── langchain/         # VMMMemory drop-in + callback handler
 │   └── raw/               # VMMOpenAI, VMMAnthropic wrappers (v2)
 ├── proxy/                 # OpenAI-compatible HTTP proxy (v2)
 ├── bench/                 # benchmarking harness (v2)
@@ -119,6 +119,29 @@ class VMMPlugin:
     def on_token_pressure(self, level: float, ledger: Ledger) -> None
     def on_agent_uncertainty(self, query: str) -> list[LessonReference]
 ```
+
+**LangGraph** — `before_node` / `after_node` / `wrap_tool_node` hooks:
+
+```python
+from sdk.langgraph.plugin import ContextStreamPlugin
+
+cs = ContextStreamPlugin(engine)
+graph.add_node("call_tool", cs.wrap_tool_node(call_tool_fn, tool_name="kubectl"))
+```
+
+**LangChain** — two patterns:
+
+```python
+# Pattern 1: drop-in memory replacement
+from sdk.langchain.memory import VMMMemory
+chain = LLMChain(llm=llm, prompt=prompt, memory=VMMMemory(engine=engine))
+
+# Pattern 2: zero-change callback handler
+from sdk.langchain.callback import ContextStreamCallbackHandler
+agent.run("diagnose OOM", callbacks=[ContextStreamCallbackHandler(engine=engine)])
+```
+
+See [`sdk/langchain/README.md`](sdk/langchain/README.md) for full usage guide.
 
 ---
 
@@ -160,7 +183,8 @@ ContextStream is designed to complement vLLM's native agentic cache APIs:
 
 **v1.0 — Full Platform**
 - [ ] OpenAI-compatible HTTP proxy (zero code change deployment)
-- [ ] LangChain / CrewAI / LlamaIndex integrations
+- [x] LangChain integration (`VMMMemory` + `ContextStreamCallbackHandler`)
+- [ ] CrewAI / LlamaIndex integrations
 - [ ] Redis / S3 eviction backends
 - [ ] Benchmarking harness (VMM vs RAG vs full-context)
 - [ ] OpenTelemetry tracing + Prometheus metrics
