@@ -47,6 +47,29 @@ Without ContextStream:                With ContextStream:
 
 ---
 
+## Benchmark: SRE Incident Demo
+
+4-tool agent diagnosing a production OOMKill incident (kubectl → SQL → bash → file).
+Measured on `claude-haiku-4-5-20251001`:
+
+| Metric | Baseline | ContextStream |
+|---|---|---|
+| Context chars sent to LLM | 3,804 | **1,554** |
+| Diagnosis prompt tokens | 1,430 | **646** |
+| Token reduction | — | **55% fewer** |
+| Raw data in main context | yes | **never** |
+| Diagnosis quality | correct | correct + sharper |
+
+Raw tool outputs (3,658 bytes total) paged to eviction store. Main agent received 4 compressed lessons. Both agents reached correct root cause; ContextStream identified the specific 4:1 heap/container ratio mismatch.
+
+```
+Run it yourself:
+  cp .env.example .env  # add ANTHROPIC_API_KEY
+  python examples/sre_agent/compare.py
+```
+
+---
+
 ## Key Design Decisions
 
 **Append-only ledger** — the main context prefix never changes. vLLM and other inference engines cache KV state by prefix hash. Any mutation = full recompute. ContextStream's append-only invariant means KV cache hit rate never regresses.
@@ -120,7 +143,8 @@ ContextStream is designed to complement vLLM's native agentic cache APIs:
 - [x] Format auto-detection (regex, <1ms, no LLM)
 - [x] YAML schema registry for custom tool schemas
 - [x] Schema contribution tooling (`scripts/new_schema.py`, `scripts/validate_schemas.py`)
-- [x] Extractor eval harness with 14 ground-truth cases (71% pass rate @ Sonnet)
+- [x] Extractor eval harness with 14 ground-truth cases (86% pass rate @ Haiku, 79% @ Sonnet)
+- [x] SRE agent benchmark: 55% token reduction, diagnosis quality preserved
 
 **v0.2 — vLLM Native Integration (Q3 2026, pending RFC #37168 merge)**
 - [ ] `POST /release_kv_cache` on tombstone events
@@ -138,7 +162,7 @@ ContextStream is designed to complement vLLM's native agentic cache APIs:
 
 ## Status
 
-v0.1 core engine complete. All 7 engine components built and smoke-tested. LangGraph SDK integration done. Extractor eval running at 71% pass rate (Sonnet). Schema registry with YAML contribution system live.
+v0.1 complete. Core engine (7 components), LangGraph SDK, extractor eval (86% Haiku / 79% Sonnet), SRE agent benchmark (55% token reduction). Schema registry with YAML contribution system live.
 
 Contributions, feedback, and collaboration welcome — especially from teams working on long-horizon agent workloads or vLLM agentic cache management.
 
