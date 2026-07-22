@@ -10,6 +10,8 @@ Confidence drops with ambiguity; caller decides whether to re-page.
 from __future__ import annotations
 
 import json
+import os
+import re
 from datetime import datetime
 from typing import Any, Iterator, Optional
 
@@ -202,8 +204,39 @@ class Extractor:
         )
 
     def _call_llm(self, prompt: str, model: str) -> dict:
-        """Stub — replace with actual Anthropic/OpenAI SDK call."""
-        raise NotImplementedError(
-            "Wire up to Anthropic or OpenAI SDK. "
-            "See configs/tool_schemas/ for expected output examples."
+        """Call Anthropic API and parse JSON response."""
+        try:
+            import anthropic
+        except ImportError as e:
+            raise ImportError("pip install anthropic") from e
+
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise EnvironmentError("ANTHROPIC_API_KEY not set")
+
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model=model,
+            max_tokens=1024,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
         )
+
+        raw_text = message.content[0].text.strip()
+
+        # Strip markdown fences if model wraps in ```json ... ```
+        if raw_text.startswith("```"):
+            raw_text = re.sub(r"^```[a-z]*\n?", "", raw_text)
+            raw_text = re.sub(r"\n?```$", "", raw_text)
+
+        try:
+            return json.loads(raw_text)
+        except json.JSONDecodeError:
+            # Last-resort: extract first {...} block
+            match = re.search(r"\{.*\}", raw_text, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group())
+                except json.JSONDecodeError:
+                    pass
+            return {"confidence": 0.1, "root_cause": f"unparseable response: {raw_text[:120]}"}

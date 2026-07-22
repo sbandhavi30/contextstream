@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -24,6 +25,15 @@ from typing import Any
 
 # Allow running from any directory: bench/eval_extractor.py or repo root
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# Load .env if present (ANTHROPIC_API_KEY etc.)
+_env_file = Path(__file__).resolve().parent.parent / ".env"
+if _env_file.exists():
+    for _line in _env_file.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _, _v = _line.partition("=")
+            os.environ.setdefault(_k.strip(), _v.strip())
 
 EVAL_PATH = Path(__file__).parent / "eval_datasets" / "extractor_eval.json"
 
