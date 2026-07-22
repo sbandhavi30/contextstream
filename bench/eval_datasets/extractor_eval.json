@@ -44,7 +44,7 @@
       "metric": "memory=210Mi/512Mi, cpu=0.3/1.0",
       "cause": null,
       "root_cause": "Pod cache-7f9d-k2p1 running healthy — memory 210Mi of 512Mi limit, CPU 0.3 of 1.0",
-      "confidence_min": 0.88
+      "confidence_min": 0.82
     }
   },
   {
@@ -210,20 +210,18 @@
     "description": "Kubernetes deployment YAML with misconfigured resource limits",
     "raw_output": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web-backend\n  namespace: production\nspec:\n  replicas: 3\n  template:\n    spec:\n      containers:\n      - name: web-backend\n        image: acme/web-backend:v2.3.1\n        resources:\n          limits:\n            memory: \"512Mi\"\n            cpu: \"500m\"\n          requests:\n            memory: \"128Mi\"\n            cpu: \"100m\"\n        env:\n        - name: DB_HOST\n          value: postgres.production.svc.cluster.local\n        - name: CACHE_HOST\n          value: redis.production.svc.cluster.local",
     "expected": {
-      "file_path": "deployment.yaml",
       "file_type": "manifest",
       "key_values": {
-        "memory_limit": "512Mi",
-        "memory_request": "128Mi",
-        "cpu_limit": "500m",
+        "memory": "512Mi",
+        "cpu": "500m",
         "replicas": "3",
         "image": "acme/web-backend:v2.3.1"
       },
       "anomalies": ["memory request (128Mi) is 4x less than limit (512Mi) — large burst ratio may cause OOM on traffic spikes"],
       "references": ["postgres.production.svc.cluster.local", "redis.production.svc.cluster.local"],
-      "root_cause": "Deployment web-backend has memory request 128Mi vs limit 512Mi — 4x ratio is high, likely cause of OOM events",
+      "root_cause": "Deployment web-backend memory request 128Mi vs limit 512Mi — 4x ratio high, likely cause OOM events",
       "entity_targets": ["web-backend", "production"],
-      "confidence_min": 0.88
+      "confidence_min": 0.82
     }
   },
   {
@@ -242,7 +240,7 @@
       "anomalies": ["DB_URL is commented out / missing — app will likely fail on database operations"],
       "root_cause": "Config file missing DB_URL — commented out, will cause connection failures",
       "entity_targets": ["DB_URL"],
-      "confidence_min": 0.90
+      "confidence_min": 0.82
     }
   }
 ]

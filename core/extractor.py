@@ -15,6 +15,11 @@ from typing import Any, Iterator, Optional
 
 from pydantic import BaseModel, Field
 
+# Lazy import to avoid circular deps — registry imports from extractor
+def _get_registry():
+    from core.schema_registry import get_registry
+    return get_registry()
+
 
 # ---------------------------------------------------------------------------
 # Base lesson model
@@ -67,7 +72,7 @@ REST_SCHEMA = {
     "state_change": "string | null — what changed e.g. 'user.status: active→suspended'",
     "error_message": "string | null — error body if status >= 400",
     "latency_ms": "integer | null — response time if present",
-    "confidence": "float 0.0-1.0",
+    "confidence": "float 0.0-1.0 — MUST be < 0.75 if error_message is generic e.g. 'unexpected error' 'internal error' 'something went wrong'. MUST be < 0.65 if status=5xx AND error_message gives no specific cause.",
 }
 
 BASH_SCHEMA = {
@@ -83,9 +88,9 @@ BASH_SCHEMA = {
 FILE_SCHEMA = {
     "file_path": "string — path of the file read",
     "file_type": "string — 'config' | 'log' | 'code' | 'data' | 'manifest' | 'other'",
-    "key_values": "dict[string, string] — up to 5 most relevant key-value pairs or settings extracted",
-    "anomalies": "list[string] — any values that look misconfigured, missing, or unexpected",
-    "references": "list[string] — other files or services this file references",
+    "key_values": "dict — COPY the key name EXACTLY as it appears in the file. Examples: file has 'DB_URL=...' → key is 'DB_URL' not 'database_url'. File has 'memory: 512Mi' → key is 'memory' not 'memory_limit'. Up to 5 most operationally relevant entries.",
+    "anomalies": "list[string] — values that are missing, commented-out, misconfigured, or unexpected. Format: '<exact_key>: <observed value or absence> — <why anomalous>'",
+    "references": "list[string] — hostnames, file paths, service names referenced in the file",
     "confidence": "float 0.0-1.0",
 }
 
@@ -95,6 +100,17 @@ TOOL_SCHEMAS: dict[str, dict] = {
     "rest_api": REST_SCHEMA,
     "bash": BASH_SCHEMA,
     "file": FILE_SCHEMA,
+}
+
+# Haiku wins structured operational outputs (kubectl, bash).
+# Sonnet wins schema/API outputs (sql, rest_api, file).
+# Override per-tool; fallback to constructor default.
+TOOL_MODEL_MAP: dict[str, str] = {
+    "kubectl":  "claude-haiku-4-5-20251001",
+    "bash":     "claude-haiku-4-5-20251001",
+    "sql":      "claude-sonnet-4-6",
+    "rest_api": "claude-sonnet-4-6",
+    "file":     "claude-sonnet-4-6",
 }
 
 
@@ -110,7 +126,9 @@ Rules:
 - Set a field to null if evidence is absent or ambiguous.
 - Set confidence < 0.7 if output is truncated, ambiguous, or contradictory.
 - Never infer or hallucinate values not present in the raw output.
-- If the raw output is empty or unparseable, return {"confidence": 0.1, "root_cause": "unparseable output"} plus nulls."""
+- If the raw output is empty or unparseable, return {"confidence": 0.1, "root_cause": "unparseable output"} plus nulls.
+- root_cause MUST include: the exact resource/entity name, exact metric values with units, and the specific condition. Bad: "memory issue detected". Good: "Pod web-backend OOMKilled — memory limit 512Mi breached after 7 restarts".
+- confidence calibration: complete unambiguous output with all key fields present → confidence ≥ 0.85. Partial or ambiguous output → confidence 0.55–0.75. Generic error with no specific cause → confidence ≤ 0.65. Empty/unparseable → confidence ≤ 0.20."""
 
 def build_extraction_prompt(tool_name: str, raw_output: str, schema: dict) -> str:
     schema_str = json.dumps(schema, indent=2)
@@ -123,9 +141,9 @@ Extract a JSON object with exactly these fields:
 {schema_str}
 
 Also include these fields in every response:
-- "root_cause": "string — one sentence synthesis of what happened or was found"
-- "entity_targets": ["list of affected entity names"]
-- "metric_impact": "string | null — primary quantitative impact if any"
+- "root_cause": "string — ONE sentence. Must name the exact resource, exact metric with units, and specific condition. No vague prose."
+- "entity_targets": ["exact resource names, IDs, table names, file paths affected — no generic words like 'database' or 'server'"]
+- "metric_impact": "string | null — primary quantitative value with unit e.g. 'memory=490Mi' '1842 rows' 'latency=3042ms'"
 
 Raw tool output:
 ---
@@ -159,12 +177,16 @@ class Extractor:
 
     def extract(self, tool_name: str, raw_ref: str, lesson_id: str) -> Lesson:
         raw_output = self.store.fetch(raw_ref)
-        schema = TOOL_SCHEMAS.get(tool_name, BASH_SCHEMA)  # bash as default
+
+        # Schema + model resolved via registry (user-defined → builtin → auto-detect)
+        registry = _get_registry()
+        schema = registry.resolve_schema(tool_name, raw_output)
+        primary_model = registry.resolve_model(tool_name, raw_output, default=self.model)
+
         prompt = build_extraction_prompt(tool_name, raw_output, schema)
+        result = self._call_llm(prompt, model=primary_model)
 
-        result = self._call_llm(prompt, model=self.model)
-
-        # Retry with stronger model if confidence too low
+        # Retry with fallback model if confidence too low
         if result.get("confidence", 0) < self.confidence_threshold:
             result = self._call_llm(prompt, model=self.fallback_model)
 

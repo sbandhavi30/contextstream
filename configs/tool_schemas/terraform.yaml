@@ -1,0 +1,12 @@
+description: "Terraform plan/apply/destroy CLI output"
+base: bash
+model: claude-haiku-4-5-20251001
+fields:
+  operation: "string — 'plan' | 'apply' | 'destroy' | 'init' | 'validate'"
+  outcome: "string — 'success' | 'failure' | 'no-changes' | 'partial'"
+  resources_added: "integer | null — count of resources to add"
+  resources_changed: "integer | null — count of resources to change"
+  resources_destroyed: "integer | null — count of resources to destroy"
+  affected_resources: "list[string] — resource addresses that changed e.g. 'aws_instance.web'"
+  error_message: "string | null — error text if operation failed"
+  workspace: "string | null — terraform workspace name if present"

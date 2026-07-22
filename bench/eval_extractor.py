@@ -17,10 +17,13 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+import sys
 import uuid
 from pathlib import Path
 from typing import Any
 
+# Allow running from any directory: bench/eval_extractor.py or repo root
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 EVAL_PATH = Path(__file__).parent / "eval_datasets" / "extractor_eval.json"
 
@@ -72,14 +75,33 @@ def score_confidence_bound(output_conf: float, expected: dict) -> bool:
     return True
 
 
+_STOPWORDS = {"a", "an", "the", "is", "in", "on", "at", "of", "to", "was", "has",
+              "are", "be", "for", "with", "that", "this", "it", "and", "or", "not"}
+
+def _tokens(text: str) -> list[str]:
+    import re
+    return [t for t in re.split(r"\W+", text.lower()) if t and t not in _STOPWORDS]
+
 def score_root_cause(output_rc: str, expected_rc: str) -> float:
-    """Keyword overlap between output and expected root_cause."""
+    """Token-level F1 (SQuAD-style) — handles valid paraphrases, not just exact keyword match."""
     if not output_rc or not expected_rc:
         return 0.0
-    exp_words = set(expected_rc.lower().split()) - {"a", "an", "the", "is", "in", "on", "at", "of", "to"}
-    out_words = set(output_rc.lower().split())
-    overlap = exp_words & out_words
-    return len(overlap) / len(exp_words) if exp_words else 0.0
+    exp = _tokens(expected_rc)
+    out = _tokens(output_rc)
+    if not exp or not out:
+        return 0.0
+    exp_counts: dict[str, int] = {}
+    for t in exp:
+        exp_counts[t] = exp_counts.get(t, 0) + 1
+    out_counts: dict[str, int] = {}
+    for t in out:
+        out_counts[t] = out_counts.get(t, 0) + 1
+    common = sum(min(exp_counts.get(t, 0), out_counts.get(t, 0)) for t in out_counts)
+    if common == 0:
+        return 0.0
+    precision = common / len(out)
+    recall = common / len(exp)
+    return 2 * precision * recall / (precision + recall)
 
 
 def score_entity_targets(output_entities: list, expected_entities: list) -> float:
