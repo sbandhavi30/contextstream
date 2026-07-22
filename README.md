@@ -21,6 +21,98 @@ Three failure modes:
 This is an infrastructure-layer problem being patched at the application layer.
 
 ---
+Layer 1 — Core Engine (the VMM)
+
+  ┌────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │      Feature       │                                                                 Theory                                                                 │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Append-only ledger │ Context window is treated like a write-ahead log. Nothing is ever deleted or modified — only appended. This preserves KV cache         │
+  │                    │ coherence in vLLM (prefix never changes = 100% cache hit rate on historical context).                                                  │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Token budget       │ Proactive accounting. Fires pressure events at 70/90/95% of limit before overflow, not after. Like an OS memory allocator — reserve    │
+  │ tracker            │ before you need, don't wait for OOM.                                                                                                   │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Sub-agent fork     │ Raw tool output never touches the main agent's context. Instead, an isolated sub-agent with a clean minimal context processes the      │
+  │ manager            │ output and returns a lesson. Main agent sees only the distilled result. Inspired by OS process isolation — processes don't share       │
+  │                    │ address space.                                                                                                                         │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Structured lesson  │ Compression is not freeform summarization. Each tool type has a typed schema: {condition, metric, cause, entity, confidence}. If a     │
+  │ extractor          │ field can't be filled, it stays null. Confidence drops with ambiguity. This makes lessons machine-readable, not just human-readable.   │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Deduplicator +     │ When state changes (404 → 200), a tombstone token appends — never mutating the past. The model's recency bias handles state correction │
+  │ tombstones         │  naturally. Conflict resolution without breaking append-only invariant.                                                                │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Semantic page      │ Global index of everything the agent knows: active lessons, their confidence, pointers to cold storage, what's been superseded. The    │
+  │ table              │ brain's map — without it the engine is blind to what's been learned.                                                                   │
+  ├────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Eviction store     │ Raw tool outputs stream to cold storage (disk/Redis/S3) immediately — never materialize in application memory. A pointer (raw_ref) is  │
+  │                    │ returned. If the agent needs the original data again (re-paging), it's always retrievable. Nothing is permanently lost.                │
+  └────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+  
+  ---
+  Layer 2 — Schema System (the intelligence layer)
+  
+  ┌───────────────────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │          Feature          │                                                             Theory                                                              │
+  ├───────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 5 built-in tool schemas   │ kubectl, bash, SQL, REST API, file — the most common tool output formats. Typed extraction fields per tool type. Not "summarize │
+  │                           │  this" — "fill these exact fields."                                                                                             │
+  ├───────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Format auto-detector      │ For unknown tools, regex analysis of raw output shape (first 400 chars) routes to the closest schema — no config needed.        │
+  │                           │ Deterministic, no LLM call, sub-millisecond.                                                                                    │
+  ├───────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ User-defined YAML         │ Devs drop a YAML file to add any tool. Inherits from a base schema + adds tool-specific fields. Zero code changes. Registry     │
+  │ registry                  │ loads on first use.                                                                                                             │
+  ├───────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Per-tool model routing    │ Haiku for structured CLI output (kubectl, bash, terraform). Sonnet for schema/API output (REST, SQL, file). Empirically         │
+  │                           │ validated on eval dataset. Per-tool routing beats one-model-fits-all by ~15% composite.                                         │
+  ├───────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Confidence-triggered      │ If primary model returns confidence < threshold, retry with stronger model automatically. Cheap model for normal cases,         │
+  │ fallback                  │ accurate model only when output is ambiguous.                                                                                   │
+  └───────────────────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+  
+  ---
+  Layer 3 — Developer Tooling
+  
+  ┌─────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │     Feature     │                                                                  Theory                                                                   │
+  ├─────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Schema scaffold │ python scripts/new_schema.py — interactive 4-question wizard. Writes YAML + eval stub + validates. A dev with no codebase knowledge can   │
+  │  CLI            │ contribute a schema in 5 minutes.                                                                                                         │
+  ├─────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Schema          │ Structural checks on all YAML schemas: required fields, known base, model validity, shadow detection, description quality. CI gate —      │
+  │ validator       │ prevents broken schemas merging.                                                                                                          │
+  ├─────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Eval harness    │ Ground-truth dataset of 14 cases covering 5 tool types. Five scoring dimensions: field coverage, field accuracy, confidence calibration,  │
+  │                 │ root_cause quality, entity extraction. Composite ≥ 0.80 required before schemas ship.                                                     │
+  ├─────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Type-aware      │ Dict fields scored key-by-key, lists scored by overlap fraction, strings scored by token-level F1. Handles valid paraphrases — doesn't    │
+  │ scorer          │ penalize "memory exhausted" vs "OOM" as a failure.                                                                                        │
+  └─────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+  
+  ---
+  Layer 4 — vLLM Integration (v0.2, Q3 2026)
+  
+  ┌────────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │        Feature         │                                                               Theory                                                               │
+  ├────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Active KV cache        │ When ContextStream fires a tombstone, it calls vLLM's POST /release_kv_cache API (RFC #37168). Zombie KV blocks evicted            │
+  │ invalidation           │ immediately instead of waiting for LRU. Both layers optimized simultaneously.                                                      │
+  ├────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ Sub-agent session      │ Each fork gets its own cache_salt session ID. vLLM tracks KV blocks per session. Fork's blocks released when fork dies — no        │
+  │ isolation              │ cross-contamination with main agent's cache.                                                                                       │
+  ├────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ DRAM/disk KV tiering   │ Eviction store backends map to vLLM's memory tiering (RFC #7697, shipped). Hot lessons in GPU HBM, warm in DRAM, cold in disk.     │
+  │                        │ Three-tier memory hierarchy.                                                                                                       │
+  └────────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+  ---
+  What this is NOT
+  
+  - Not a new agent framework — plugs into LangGraph/CrewAI/LangChain as a plugin
+  - Not a RAG system — RAG pages IN but never OUT. ContextStream does both directions
+  - Not a summarization wrapper — typed extraction schemas, not freeform prose
+  - Not a vLLM replacement — sits above the serving layer, drives vLLM's own APIs
 
 ## The Approach
 
